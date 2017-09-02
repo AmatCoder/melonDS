@@ -30,7 +30,6 @@
 #include "InputConfig.h"
 #include "EmuConfig.h"
 
-
 // blarg
 #ifndef SDL_PIXELFORMAT_RGBA32
 #define SDL_PIXELFORMAT_RGBA32 SDL_PIXELFORMAT_ABGR8888
@@ -92,7 +91,6 @@ int CALLBACK WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmdline, int cmdsho
 
 #endif // __WXMSW__
 
-
 bool _fileexists(char* name)
 {
     FILE* f = fopen(name, "rb");
@@ -136,6 +134,16 @@ bool wxApp_melonDS::OnInit()
 
     melon->emuthread = emuthread;
     emuthread->parent = melon;
+
+#ifdef __WXGTK__
+    SDL_SysWMinfo info;
+
+    SDL_VERSION(&info.version);
+
+    if(SDL_GetWindowWMInfo(emuthread->sdlwin,&info))
+      melon->socket->setWindow(info.info.x11.window);
+
+#endif // __WXGTK__
 
     return true;
 }
@@ -189,7 +197,7 @@ MainFrame::MainFrame()
 
     SetMenuBar(melonbar);
 
-    SetClientSize(256, 256);
+    SetClientSize(Config::WindowWidth, Config::WindowHeight);
     SetMinSize(GetSize());
 
     NDS::Init();
@@ -199,6 +207,12 @@ MainFrame::MainFrame()
 
     joy = NULL;
     joyid = -1;
+
+#ifdef __WXGTK__
+    socket = new wxSocket(this,wxID_ANY,
+            wxDefaultPosition,
+            wxSize(Config::WindowWidth, Config::WindowHeight));
+#endif // __WXGTK__
 }
 
 void MainFrame::OnClose(wxCloseEvent& event)
@@ -380,10 +394,16 @@ wxThread::ExitCode EmuThread::Entry()
 
     limitfps = true;
 
+    Uint32 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+
+#ifdef __WXGTK__
+    flags = SDL_WINDOW_HIDDEN;
+#endif // __WXGTK__
+
     sdlwin = SDL_CreateWindow("melonDS " MELONDS_VERSION,
                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               Config::WindowWidth, Config::WindowHeight,
-                              SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+                              flags);
 
     SDL_SetWindowMinimumSize(sdlwin, 256, 384);
 

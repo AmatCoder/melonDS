@@ -26,6 +26,11 @@
 
 #include <SDL2/SDL.h>
 
+#ifdef __WXGTK__
+#include <SDL2/SDL_syswm.h>
+#include "socket.h"
+#endif // __WXGTK__
+
 enum
 {
     ID_OPENROM = 1,
@@ -62,6 +67,10 @@ public:
 
     wxString rompath;
 
+#ifdef __WXGTK__
+    wxSocket *socket;
+#endif // __WXGTK__
+
 private:
     wxDECLARE_EVENT_TABLE();
 
@@ -93,12 +102,12 @@ public:
     bool EmuIsPaused() { return (emustatus == 2) && emupaused; }
 
     MainFrame* parent;
+    SDL_Window* sdlwin;
 
 protected:
     virtual ExitCode Entry();
     void ProcessEvents();
 
-    SDL_Window* sdlwin;
     SDL_Renderer* sdlrend;
     SDL_Texture* sdltex;
 
