@@ -121,6 +121,11 @@ bool wxApp_melonDS::OnInit()
         return false;
     }
 
+#ifdef __WXMSW__
+    MainFrame* melon = new MainFrame();
+    melon->Show(true);
+#endif // __WXMSW__
+
     emuthread = new EmuThread();
     if (emuthread->Run() != wxTHREAD_NO_ERROR)
     {
@@ -129,8 +134,10 @@ bool wxApp_melonDS::OnInit()
         return false;
     }
 
+#ifdef __WXGTK__
     MainFrame* melon = new MainFrame();
     melon->Show(true);
+#endif // __WXGTK__
 
     melon->emuthread = emuthread;
     emuthread->parent = melon;
@@ -142,7 +149,6 @@ bool wxApp_melonDS::OnInit()
 
     if(SDL_GetWindowWMInfo(emuthread->sdlwin,&info))
       melon->socket->setWindow(info.info.x11.window);
-
 #endif // __WXGTK__
 
     return true;
@@ -394,16 +400,14 @@ wxThread::ExitCode EmuThread::Entry()
 
     limitfps = true;
 
-    Uint32 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-
 #ifdef __WXGTK__
-    flags = SDL_WINDOW_HIDDEN;
-#endif // __WXGTK__
-
     sdlwin = SDL_CreateWindow("melonDS " MELONDS_VERSION,
                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               Config::WindowWidth, Config::WindowHeight,
-                              flags);
+                              SDL_WINDOW_HIDDEN);
+#else
+    sdlwin = SDL_CreateWindowFrom((const void *)parent->GetHandle());
+#endif // __WXGTK__
 
     SDL_SetWindowMinimumSize(sdlwin, 256, 384);
 

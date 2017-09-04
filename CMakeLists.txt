@@ -10,7 +10,6 @@ SET(SOURCES
 	src/wx/EmuConfig.cpp
 	src/wx/InputConfig.cpp
 	src/wx/Platform.cpp
-  src/wx/socket.cpp
 	src/ARM.cpp
 	src/ARMInterpreter.cpp
 	src/ARMInterpreter_ALU.cpp
@@ -36,7 +35,7 @@ include_directories(${GTK2_INCLUDE_DIRS})
 link_libraries(${GTK2_LIBRARIES})
 endif (UNIX)
 
-find_package(wxWidgets REQUIRED)
+find_package(wxWidgets COMPONENTS core base REQUIRED)
 include(${wxWidgets_USE_FILE})
 link_libraries(${wxWidgets_LIBRARIES})
 
@@ -44,7 +43,12 @@ find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
 link_libraries(${SDL2_LIBRARIES})
 
+if (UNIX)
+add_executable(${PROJECT_WX} ${SOURCES} src/wx/socket.cpp)
+else ()
 add_executable(${PROJECT_WX} ${SOURCES})
+endif ()
+
 target_link_libraries(${PROJECT_WX})
 
 set(CMAKE_BUILD_TYPE Debug)
