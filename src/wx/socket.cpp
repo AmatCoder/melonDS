@@ -1,14 +1,9 @@
-#include "wx/wxprec.h"
 #include "socket.h"
 
 extern "C"
 void wxgtk_window_size_request_callback(GtkWidget *widget,
                                         GtkRequisition *requisition,
                                         wxWindow *win);
-
-extern WXDLLEXPORT_DATA(const wxChar) wxSocketNameStr[] = wxT("socket");
-
-IMPLEMENT_DYNAMIC_CLASS(wxSocket, wxControl)
 
 wxSocket::wxSocket()
 {
@@ -49,16 +44,16 @@ bool wxSocket::Create(wxWindow *parent,
     return TRUE;
 }
 
-void wxSocket::setWindow(GdkNativeWindow test)
+void wxSocket::setWindow(GdkNativeWindow XID)
 {
-    gtk_socket_add_id(GTK_SOCKET(m_widget), test);
+    gtk_socket_add_id(GTK_SOCKET(m_widget), XID);
 }
 
 void wxSocket::DoSetSize(int x, int y,
-                           int width, int height,
-                           int sizeFlags )
+                         int width, int height,
+                         int sizeFlags)
 {
-    wxControl::DoSetSize( x, y, width, height, sizeFlags );
+    wxControl::DoSetSize(x, y, width, height, sizeFlags);
 }
 
 wxSize wxSocket::DoGetBestSize() const
@@ -71,5 +66,5 @@ wxSize wxSocket::DoGetBestSize() const
     (* GTK_WIDGET_CLASS(GTK_OBJECT_GET_CLASS(m_widget))->size_request)
         (m_widget, &req);
 
-    return wxSize (req.width, req.height);
+    return wxSize(req.width, req.height);
 }
