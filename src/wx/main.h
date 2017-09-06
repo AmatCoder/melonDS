@@ -25,6 +25,7 @@
 #endif
 
 #include <SDL2/SDL.h>
+#include <wx/evtloop.h>
 
 #ifdef __WXGTK__
 #include <SDL2/SDL_syswm.h>
@@ -44,68 +45,33 @@ enum
     ID_INPUTCONFIG,
 };
 
-class EmuThread;
-
-class wxApp_melonDS : public wxApp
-{
-public:
-    virtual bool OnInit();
-    virtual int OnExit();
-
-    EmuThread* emuthread;
-};
-
 class MainFrame : public wxFrame
 {
 public:
     MainFrame();
 
-    SDL_Joystick* joy;
-    SDL_JoystickID joyid;
+    void Start(wxEventLoopBase *loop);
 
-    EmuThread* emuthread;
-
-    wxString rompath;
-
-#ifdef __WXGTK__
-    wxSocket *socket;
-#endif // __WXGTK__
-
-private:
-    wxDECLARE_EVENT_TABLE();
-
-    void OnClose(wxCloseEvent& event);
-    void OnCloseFromMenu(wxCommandEvent& event);
-    void OnOpenROM(wxCommandEvent& event);
-
-    void OnRun(wxCommandEvent& event);
-    void OnPause(wxCommandEvent& event);
-    void OnReset(wxCommandEvent& event);
-
-    void OnEmuConfig(wxCommandEvent& event);
-    void OnInputConfig(wxCommandEvent& event);
-
-    void ProcessSDLEvents();
-};
-
-class EmuThread : public wxThread
-{
-public:
-    EmuThread();
-    ~EmuThread();
-
-    void EmuRun() { emustatus = 1; emupaused = false; SDL_RaiseWindow(sdlwin); }
-    void EmuPause() { emustatus = 2; while (!emupaused); }
+    void EmuRun() { emustatus = 1; emupaused = false; }
+    void EmuPause() { emustatus = 2; }
     void EmuExit() { emustatus = 0; }
 
     bool EmuIsRunning() { return (emustatus == 1) || (emustatus == 2); }
     bool EmuIsPaused() { return (emustatus == 2) && emupaused; }
 
-    MainFrame* parent;
+    SDL_Joystick* joy;
+    SDL_JoystickID joyid;
+
+    wxString rompath;
+
     SDL_Window* sdlwin;
+    bool MainLoopIsRunning;
+
+#ifdef __WXGTK__
+    wxSocket *socket;
+#endif // __WXGTK__
 
 protected:
-    virtual ExitCode Entry();
     void ProcessEvents();
 
     SDL_Renderer* sdlrend;
@@ -127,6 +93,32 @@ protected:
     int emustatus;
     volatile bool emupaused;
     bool limitfps;
+
+private:
+    wxDECLARE_EVENT_TABLE();
+
+    void OnClose(wxCloseEvent& event);
+    void OnCloseFromMenu(wxCommandEvent& event);
+    void OnOpenROM(wxCommandEvent& event);
+
+    void OnRun(wxCommandEvent& event);
+    void OnPause(wxCommandEvent& event);
+    void OnReset(wxCommandEvent& event);
+
+    void OnEmuConfig(wxCommandEvent& event);
+    void OnInputConfig(wxCommandEvent& event);
+
+    void ProcessSDLEvents();
+};
+
+class wxApp_melonDS : public wxApp
+{
+public:
+    virtual bool OnInit();
+    virtual void OnEventLoopEnter(wxEventLoopBase *loop);
+    virtual int OnExit();
+
+    MainFrame *melon;
 };
 
 #endif // WX_MAIN_H

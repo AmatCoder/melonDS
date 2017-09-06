@@ -121,47 +121,28 @@ bool wxApp_melonDS::OnInit()
         return false;
     }
 
-#ifdef __WXMSW__
-    MainFrame* melon = new MainFrame();
+    melon = new MainFrame();
+    melon->MainLoopIsRunning = false;
     melon->Show(true);
-#endif // __WXMSW__
-
-    emuthread = new EmuThread();
-    if (emuthread->Run() != wxTHREAD_NO_ERROR)
-    {
-        printf("thread shat itself :( giving up now\n");
-        delete emuthread;
-        return false;
-    }
-
-#ifdef __WXGTK__
-    MainFrame* melon = new MainFrame();
-    melon->Show(true);
-#endif // __WXGTK__
-
-    melon->emuthread = emuthread;
-    emuthread->parent = melon;
-
-#ifdef __WXGTK__
-    SDL_SysWMinfo info;
-
-    SDL_VERSION(&info.version);
-
-    if(SDL_GetWindowWMInfo(emuthread->sdlwin,&info))
-      melon->socket->setWindow(info.info.x11.window);
-#endif // __WXGTK__
 
     return true;
 }
 
-int wxApp_melonDS::OnExit()
+void wxApp_melonDS::OnEventLoopEnter(wxEventLoopBase *loop)
 {
-    emuthread->Wait();
-    delete emuthread;
+  if (melon->MainLoopIsRunning) return;
 
-    return wxApp::OnExit();
+  if (loop->IsMain())
+  {
+    melon->MainLoopIsRunning = true;
+    melon->Start(loop);
+  }
 }
 
+int wxApp_melonDS::OnExit()
+{
+    return wxApp::OnExit();
+}
 
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_CLOSE(MainFrame::OnClose)
@@ -177,223 +158,12 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_INPUTCONFIG, MainFrame::OnInputConfig)
 wxEND_EVENT_TABLE()
 
-
-MainFrame::MainFrame()
-    : wxFrame(NULL, wxID_ANY, "melonDS " MELONDS_VERSION)
-{
-    wxMenu* filemenu = new wxMenu();
-    filemenu->Append(ID_OPENROM, "Open ROM...");
-    filemenu->AppendSeparator();
-    filemenu->Append(ID_EXIT, "Quit");
-
-    wxMenu* systemmenu = new wxMenu();
-    systemmenu->Append(ID_RUN, "Run");
-    systemmenu->AppendCheckItem(ID_PAUSE, "Pause");
-    systemmenu->AppendSeparator();
-    systemmenu->Append(ID_RESET, "Reset");
-
-    wxMenu* settingsmenu = new wxMenu();
-    settingsmenu->Append(ID_EMUCONFIG, "Emulation");
-    settingsmenu->Append(ID_INPUTCONFIG, "Input");
-
-    wxMenuBar* melonbar = new wxMenuBar();
-    melonbar->Append(filemenu, "File");
-    melonbar->Append(systemmenu, "System");
-    melonbar->Append(settingsmenu, "Settings");
-
-    SetMenuBar(melonbar);
-
-    SetClientSize(Config::WindowWidth, Config::WindowHeight);
-    SetMinSize(GetSize());
-
-    NDS::Init();
-    rompath = wxEmptyString;
-    GetMenuBar()->Enable(ID_PAUSE, false);
-    GetMenuBar()->Enable(ID_RESET, false);
-
-    joy = NULL;
-    joyid = -1;
-
-#ifdef __WXGTK__
-    socket = new wxSocket(this,wxID_ANY,
-            wxDefaultPosition,
-            wxSize(Config::WindowWidth, Config::WindowHeight));
-#endif // __WXGTK__
-}
-
-void MainFrame::OnClose(wxCloseEvent& event)
-{
-    emuthread->EmuPause();
-    emuthread->EmuExit();
-
-    NDS::DeInit();
-
-    if (joy)
-    {
-        SDL_JoystickClose(joy);
-        joy = NULL;
-        joyid = -1;
-    }
-
-    Destroy();
-    emuthread->parent = NULL;
-
-    Config::Save();
-}
-
-void MainFrame::OnCloseFromMenu(wxCommandEvent& event)
-{
-    Close();
-}
-
-void MainFrame::OnOpenROM(wxCommandEvent& event)
-{
-    wxFileDialog opener(this, _("Open ROM"), "", "", "DS ROM (*.nds)|*.nds;*.srl|Any file|*.*", wxFD_OPEN|wxFD_FILE_MUST_EXIST);
-    if (opener.ShowModal() == wxID_CANCEL)
-        return;
-
-    emuthread->EmuPause();
-
-    rompath = opener.GetPath();
-    NDS::LoadROM(rompath.mb_str(), Config::DirectBoot);
-
-    emuthread->EmuRun();
-    GetMenuBar()->Enable(ID_PAUSE, true);
-    GetMenuBar()->Check(ID_PAUSE, false);
-    GetMenuBar()->Enable(ID_RESET, true);
-
-    if (!joy)
-    {
-        if (SDL_NumJoysticks() > 0)
-        {
-            joy = SDL_JoystickOpen(0);
-            joyid = SDL_JoystickInstanceID(joy);
-        }
-    }
-}
-
-void MainFrame::OnRun(wxCommandEvent& event)
-{
-    // TODO: reduce duplicate code
-
-    if (!emuthread->EmuIsRunning())
-    {
-        NDS::LoadBIOS();
-    }
-
-    emuthread->EmuRun();
-    GetMenuBar()->Enable(ID_PAUSE, true);
-    GetMenuBar()->Check(ID_PAUSE, false);
-    GetMenuBar()->Enable(ID_RESET, true);
-
-    if (!joy)
-    {
-        if (SDL_NumJoysticks() > 0)
-        {
-            joy = SDL_JoystickOpen(0);
-            joyid = SDL_JoystickInstanceID(joy);
-        }
-    }
-}
-
-void MainFrame::OnPause(wxCommandEvent& event)
-{
-    if (!emuthread->EmuIsPaused())
-    {
-        emuthread->EmuPause();
-        GetMenuBar()->Check(ID_PAUSE, true);
-    }
-    else
-    {
-        emuthread->EmuRun();
-        GetMenuBar()->Check(ID_PAUSE, false);
-    }
-}
-
-void MainFrame::OnReset(wxCommandEvent& event)
-{
-    emuthread->EmuPause();
-
-    if (!rompath.IsEmpty())
-        NDS::LoadROM(rompath.mb_str(), Config::DirectBoot);
-    else
-        NDS::LoadBIOS();
-
-    emuthread->EmuRun();
-    GetMenuBar()->Enable(ID_PAUSE, true);
-    GetMenuBar()->Check(ID_PAUSE, false);
-    GetMenuBar()->Enable(ID_RESET, true);
-
-    if (!joy)
-    {
-        if (SDL_NumJoysticks() > 0)
-        {
-            joy = SDL_JoystickOpen(0);
-            joyid = SDL_JoystickInstanceID(joy);
-        }
-    }
-}
-
-void MainFrame::OnEmuConfig(wxCommandEvent& event)
-{
-    bool oldpause = emuthread->EmuIsPaused();
-    if (!oldpause && emuthread->EmuIsRunning())
-        emuthread->EmuPause();
-
-    EmuConfigDialog dlg(this);
-    dlg.ShowModal();
-
-    if (emuthread->EmuIsRunning())
-    {
-        // apply threaded 3D setting
-        GPU3D::SoftRenderer::SetupRenderThread();
-
-        if (Wifi::MPInited)
-        {
-            Platform::MP_DeInit();
-            Platform::MP_Init();
-        }
-    }
-
-    if (!oldpause && emuthread->EmuIsRunning())
-        emuthread->EmuRun();
-}
-
-void MainFrame::OnInputConfig(wxCommandEvent& event)
-{
-    if (joy)
-    {
-        SDL_JoystickClose(joy);
-        joy = NULL;
-        joyid = -1;
-    }
-
-    InputConfigDialog dlg(this);
-    dlg.ShowModal();
-
-    if (SDL_NumJoysticks() > 0)
-    {
-        joy = SDL_JoystickOpen(0);
-        joyid = SDL_JoystickInstanceID(joy);
-    }
-}
-
-
-EmuThread::EmuThread()
-    : wxThread(wxTHREAD_JOINABLE)
-{
-}
-
-EmuThread::~EmuThread()
-{
-}
-
 static void AudioCallback(void* data, Uint8* stream, int len)
 {
     SPU::ReadOutput((s16*)stream, len>>2);
 }
 
-wxThread::ExitCode EmuThread::Entry()
+void MainFrame::Start(wxEventLoopBase *loop)
 {
     emustatus = 3;
     emupaused = false;
@@ -401,12 +171,12 @@ wxThread::ExitCode EmuThread::Entry()
     limitfps = true;
 
 #ifdef __WXGTK__
-    sdlwin = SDL_CreateWindow("melonDS " MELONDS_VERSION,
-                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              Config::WindowWidth, Config::WindowHeight,
+    sdlwin = SDL_CreateWindow("",
+                              SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                              0, 0,
                               SDL_WINDOW_HIDDEN);
 #else
-    sdlwin = SDL_CreateWindowFrom((const void *)parent->GetHandle());
+    sdlwin = SDL_CreateWindowFrom((const void *)GetHandle());
 #endif // __WXGTK__
 
     SDL_SetWindowMinimumSize(sdlwin, 256, 384);
@@ -419,6 +189,15 @@ wxThread::ExitCode EmuThread::Entry()
     SDL_LockTexture(sdltex, NULL, &texpixels, &texstride);
     memset(texpixels, 0, texstride*384);
     SDL_UnlockTexture(sdltex);
+
+#ifdef __WXGTK__
+    SDL_SysWMinfo info;
+
+    SDL_VERSION(&info.version);
+
+    if(SDL_GetWindowWMInfo(sdlwin,&info))
+      socket->setWindow(info.info.x11.window);
+#endif // __WXGTK__
 
     topsrc.x = 0; topsrc.y = 0;
     topsrc.w = 256; topsrc.h = 192;
@@ -458,6 +237,9 @@ wxThread::ExitCode EmuThread::Entry()
 
     for (;;)
     {
+      while (loop->Pending())
+        loop->Dispatch();
+
         if (emustatus == 0) break;
 
         ProcessEvents();
@@ -502,7 +284,7 @@ wxThread::ExitCode EmuThread::Entry()
             u32 wantedtick = starttick + (u32)((float)fpslimitcount * framerate);
             if (curtick < wantedtick && limitfps)
             {
-                Sleep(wantedtick - curtick);
+                wxMilliSleep(wantedtick - curtick);
             }
             else
             {
@@ -526,7 +308,7 @@ wxThread::ExitCode EmuThread::Entry()
 
                 char melontitle[100];
                 sprintf(melontitle, "%d/%.0f FPS | melonDS " MELONDS_VERSION, fps, fpstarget);
-                SDL_SetWindowTitle(sdlwin, melontitle);
+                SetTitle(melontitle);
             }
         }
         else
@@ -537,7 +319,7 @@ wxThread::ExitCode EmuThread::Entry()
             lastmeasuretick = lasttick;
             fpslimitcount = 0;
 
-            Sleep(50);
+            wxMilliSleep(50);
 
             SDL_RenderCopy(sdlrend, sdltex, NULL, NULL);
             SDL_RenderPresent(sdlrend);
@@ -545,7 +327,7 @@ wxThread::ExitCode EmuThread::Entry()
             if (emustatus == 2)
             {
                 char* melontitle = "Paused - melonDS " MELONDS_VERSION;
-                SDL_SetWindowTitle(sdlwin, melontitle);
+                SetTitle(melontitle);
             }
 
             emupaused = true;
@@ -559,11 +341,208 @@ wxThread::ExitCode EmuThread::Entry()
     SDL_DestroyTexture(sdltex);
     SDL_DestroyRenderer(sdlrend);
     SDL_DestroyWindow(sdlwin);
-
-    return (wxThread::ExitCode)0;
 }
 
-void EmuThread::ProcessEvents()
+MainFrame::MainFrame()
+    : wxFrame(NULL, wxID_ANY, "melonDS " MELONDS_VERSION)
+{
+    wxMenu* filemenu = new wxMenu();
+    filemenu->Append(ID_OPENROM, "Open ROM...");
+    filemenu->AppendSeparator();
+    filemenu->Append(ID_EXIT, "Quit");
+
+    wxMenu* systemmenu = new wxMenu();
+    systemmenu->Append(ID_RUN, "Run");
+    systemmenu->AppendCheckItem(ID_PAUSE, "Pause");
+    systemmenu->AppendSeparator();
+    systemmenu->Append(ID_RESET, "Reset");
+
+    wxMenu* settingsmenu = new wxMenu();
+    settingsmenu->Append(ID_EMUCONFIG, "Emulation");
+    settingsmenu->Append(ID_INPUTCONFIG, "Input");
+
+    wxMenuBar* melonbar = new wxMenuBar();
+    melonbar->Append(filemenu, "File");
+    melonbar->Append(systemmenu, "System");
+    melonbar->Append(settingsmenu, "Settings");
+
+    SetMenuBar(melonbar);
+
+    SetClientSize(Config::WindowWidth, Config::WindowHeight);
+    SetMinClientSize(wxSize(256, 384));
+
+    NDS::Init();
+    rompath = wxEmptyString;
+    GetMenuBar()->Enable(ID_PAUSE, false);
+    GetMenuBar()->Enable(ID_RESET, false);
+
+    joy = NULL;
+    joyid = -1;
+
+#ifdef __WXGTK__
+    socket = new wxSocket(this,wxID_ANY,
+            wxDefaultPosition,
+            wxSize(Config::WindowWidth, Config::WindowHeight));
+#endif // __WXGTK__
+}
+
+void MainFrame::OnClose(wxCloseEvent& event)
+{
+    EmuPause();
+    EmuExit();
+
+    NDS::DeInit();
+
+    if (joy)
+    {
+        SDL_JoystickClose(joy);
+        joy = NULL;
+        joyid = -1;
+    }
+
+    Destroy();
+
+    Config::Save();
+}
+
+void MainFrame::OnCloseFromMenu(wxCommandEvent& event)
+{
+    Close();
+}
+
+void MainFrame::OnOpenROM(wxCommandEvent& event)
+{
+    wxFileDialog opener(this, _("Open ROM"), "", "", "DS ROM (*.nds)|*.nds;*.srl|Any file|*.*", wxFD_OPEN|wxFD_FILE_MUST_EXIST);
+    if (opener.ShowModal() == wxID_CANCEL)
+        return;
+
+    EmuPause();
+
+    rompath = opener.GetPath();
+    NDS::LoadROM(rompath.mb_str(), Config::DirectBoot);
+
+    EmuRun();
+    GetMenuBar()->Enable(ID_PAUSE, true);
+    GetMenuBar()->Check(ID_PAUSE, false);
+    GetMenuBar()->Enable(ID_RESET, true);
+
+    if (!joy)
+    {
+        if (SDL_NumJoysticks() > 0)
+        {
+            joy = SDL_JoystickOpen(0);
+            joyid = SDL_JoystickInstanceID(joy);
+        }
+    }
+}
+
+void MainFrame::OnRun(wxCommandEvent& event)
+{
+    // TODO: reduce duplicate code
+
+    if (!EmuIsRunning())
+    {
+        NDS::LoadBIOS();
+    }
+
+    EmuRun();
+    GetMenuBar()->Enable(ID_PAUSE, true);
+    GetMenuBar()->Check(ID_PAUSE, false);
+    GetMenuBar()->Enable(ID_RESET, true);
+
+    if (!joy)
+    {
+        if (SDL_NumJoysticks() > 0)
+        {
+            joy = SDL_JoystickOpen(0);
+            joyid = SDL_JoystickInstanceID(joy);
+        }
+    }
+}
+
+void MainFrame::OnPause(wxCommandEvent& event)
+{
+    if (!EmuIsPaused())
+    {
+        EmuPause();
+        GetMenuBar()->Check(ID_PAUSE, true);
+    }
+    else
+    {
+        EmuRun();
+        GetMenuBar()->Check(ID_PAUSE, false);
+    }
+}
+
+void MainFrame::OnReset(wxCommandEvent& event)
+{
+    EmuPause();
+
+    if (!rompath.IsEmpty())
+        NDS::LoadROM(rompath.mb_str(), Config::DirectBoot);
+    else
+        NDS::LoadBIOS();
+
+    EmuRun();
+    GetMenuBar()->Enable(ID_PAUSE, true);
+    GetMenuBar()->Check(ID_PAUSE, false);
+    GetMenuBar()->Enable(ID_RESET, true);
+
+    if (!joy)
+    {
+        if (SDL_NumJoysticks() > 0)
+        {
+            joy = SDL_JoystickOpen(0);
+            joyid = SDL_JoystickInstanceID(joy);
+        }
+    }
+}
+
+void MainFrame::OnEmuConfig(wxCommandEvent& event)
+{
+    bool oldpause = EmuIsPaused();
+    if (!oldpause && EmuIsRunning())
+        EmuPause();
+
+    EmuConfigDialog dlg(this);
+    dlg.ShowModal();
+
+    if (EmuIsRunning())
+    {
+        // apply threaded 3D setting
+        GPU3D::SoftRenderer::SetupRenderThread();
+
+        if (Wifi::MPInited)
+        {
+            Platform::MP_DeInit();
+            Platform::MP_Init();
+        }
+    }
+
+    if (!oldpause && EmuIsRunning())
+        EmuRun();
+}
+
+void MainFrame::OnInputConfig(wxCommandEvent& event)
+{
+    if (joy)
+    {
+        SDL_JoystickClose(joy);
+        joy = NULL;
+        joyid = -1;
+    }
+
+    InputConfigDialog dlg(this);
+    dlg.ShowModal();
+
+    if (SDL_NumJoysticks() > 0)
+    {
+        joy = SDL_JoystickOpen(0);
+        joyid = SDL_JoystickInstanceID(joy);
+    }
+}
+
+void MainFrame::ProcessEvents()
 {
     bool running = (emustatus == 1);
     SDL_Event evt;
@@ -575,8 +554,8 @@ void EmuThread::ProcessEvents()
         case SDL_WINDOWEVENT:
             if (evt.window.event == SDL_WINDOWEVENT_CLOSE)
             {
-                if (parent) parent->Close();
                 EmuExit();
+                Close();
                 return;
             }
             if (evt.window.event != SDL_WINDOWEVENT_EXPOSED)
@@ -667,7 +646,7 @@ void EmuThread::ProcessEvents()
 
         case SDL_JOYBUTTONDOWN:
             if (!running) return;
-            if (evt.jbutton.which != parent->joyid) return;
+            if (evt.jbutton.which != joyid) return;
             for (int i = 0; i < 10; i++)
                 if (evt.jbutton.button == Config::JoyMapping[i]) NDS::PressKey(i);
             if (evt.jbutton.button == Config::JoyMapping[10]) NDS::PressKey(16);
@@ -676,7 +655,7 @@ void EmuThread::ProcessEvents()
 
         case SDL_JOYBUTTONUP:
             if (!running) return;
-            if (evt.jbutton.which != parent->joyid) return;
+            if (evt.jbutton.which != joyid) return;
             for (int i = 0; i < 10; i++)
                 if (evt.jbutton.button == Config::JoyMapping[i]) NDS::ReleaseKey(i);
             if (evt.jbutton.button == Config::JoyMapping[10]) NDS::ReleaseKey(16);
@@ -685,7 +664,7 @@ void EmuThread::ProcessEvents()
 
         case SDL_JOYHATMOTION:
             if (!running) return;
-            if (evt.jhat.which != parent->joyid) return;
+            if (evt.jhat.which != joyid) return;
             if (evt.jhat.hat != 0) return;
             for (int i = 0; i < 12; i++)
             {
@@ -703,7 +682,7 @@ void EmuThread::ProcessEvents()
 
         case SDL_JOYAXISMOTION:
             if (!running) return;
-            if (evt.jaxis.which != parent->joyid) return;
+            if (evt.jaxis.which != joyid) return;
             if (evt.jaxis.axis == 0)
             {
                 if (evt.jaxis.value >= 16384) { NDS::PressKey(4); axismask |= 0x1; }
